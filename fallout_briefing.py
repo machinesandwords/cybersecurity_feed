@@ -8,13 +8,6 @@ import urllib.parse
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
-CYBERSECURITY_DOMAINS = (
-    "darkreading.com,securityweek.com,csoonline.com,"
-    "cybersecuritydive.com,scmagazine.com,infosecurity-magazine.com,"
-    "axios.com,reuters.com,wsj.com,ft.com,bloomberg.com,"
-    "techcrunch.com,theregister.com,crunchbase.com"
-)
-
 KEYWORDS = [
     "cybersecurity acquisition",
     "cybersecurity merger",
@@ -52,14 +45,17 @@ def fetch_news(keywords, hours_back=24):
             f"&sortBy=publishedAt"
             f"&language=en"
             f"&pageSize=5"
-            f"&domains={CYBERSECURITY_DOMAINS}"
             f"&apiKey={NEWS_API_KEY}"
         )
         try:
             resp = requests.get(url, timeout=10)
             data = resp.json()
             for art in data.get("articles", []):
-                if art["url"] not in seen_urls and art.get("title") and "[Removed]" not in art.get("title", ""):
+                if (
+                    art["url"] not in seen_urls
+                    and art.get("title")
+                    and "[Removed]" not in art.get("title", "")
+                ):
                     seen_urls.add(art["url"])
                     art["matched_keyword"] = kw
                     articles.append(art)
@@ -71,17 +67,16 @@ def fetch_news(keywords, hours_back=24):
 
 
 def is_relevant(article):
-    """Claude relevance filter — keeps only business and market intelligence items."""
     title = article.get("title", "")
     description = article.get("description") or ""
 
     prompt = f"""You are a filter for a cybersecurity business intelligence newsletter for CISOs and enterprise security architects.
 
-Is this article relevant to cybersecurity BUSINESS and MARKET news? 
+Is this article relevant to cybersecurity BUSINESS and MARKET news?
 
 YES if it covers: vendor acquisitions, mergers, funding rounds, IPOs, executive appointments or departures, product strategy, market consolidation, regulatory actions against vendors, SEC enforcement, company layoffs, bankruptcies, or significant partnership deals.
 
-NO if it is primarily about: specific cyberattacks, data breaches, malware, threat actors, vulnerabilities, incident response, or security operations — even if it mentions a cybersecurity company.
+NO if it is primarily about: specific cyberattacks, data breaches, malware, threat actors, vulnerabilities, incident response, security operations, or unrelated topics.
 
 Answer only YES or NO.
 
@@ -94,8 +89,7 @@ Description: {description}"""
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}]
         )
-        answer = response.content[0].text.strip().upper()
-        return answer.startswith("YES")
+        return response.content[0].text.strip().upper().startswith("YES")
     except Exception:
         return True
 
@@ -189,7 +183,7 @@ with col3:
 st.divider()
 
 if run:
-    with st.spinner("Fetching news from cybersecurity business sources..."):
+    with st.spinner("Fetching news..."):
         articles = fetch_news(KEYWORDS, hours_back=hours_back)
 
     if not articles:
