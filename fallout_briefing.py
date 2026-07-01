@@ -8,24 +8,17 @@ import urllib.parse
 NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
+# Single batched query — 1 API call per run instead of 17
 KEYWORDS = [
     "cybersecurity acquisition",
     "cybersecurity merger",
     "cybersecurity funding",
     "cybersecurity IPO",
-    "cybersecurity investment",
-    "security vendor acquisition",
-    "cybersecurity partnership",
     "CISO appointment",
     "cybersecurity CEO",
-    "security platform launch",
     "cybersecurity layoffs",
-    "cybersecurity bankruptcy",
-    "cybersecurity regulation",
     "SEC cybersecurity",
-    "cybersecurity market",
-    "security vendor strategy",
-    "cybersecurity product strategy",
+    "security vendor",
 ]
 
 MA_KEYWORDS = {"acquisition", "merger", "IPO", "funding", "bankruptcy", "buyout", "deal", "investment"}
@@ -34,38 +27,32 @@ MA_KEYWORDS = {"acquisition", "merger", "IPO", "funding", "bankruptcy", "buyout"
 
 def fetch_news(keywords, hours_back=24):
     from_time = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    seen_urls = set()
     articles = []
     errors = []
 
-    for kw in keywords:
-        url = (
-            f"https://newsapi.org/v2/everything"
-            f"?q={urllib.parse.quote(kw)}"
-            f"&from={from_time}"
-            f"&sortBy=publishedAt"
-            f"&language=en"
-            f"&pageSize=5"
-            f"&apiKey={NEWS_API_KEY}"
-        )
-        try:
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            if data.get("status") != "ok":
-                errors.append(f"{kw}: {data.get('message', 'unknown error')}")
-                continue
+    query = " OR ".join(f'"{kw}"' for kw in keywords)
+
+    url = (
+        f"https://newsapi.org/v2/everything"
+        f"?q={urllib.parse.quote(query)}"
+        f"&from={from_time}"
+        f"&sortBy=publishedAt"
+        f"&language=en"
+        f"&pageSize=50"
+        f"&apiKey={NEWS_API_KEY}"
+    )
+
+    try:
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        if data.get("status") != "ok":
+            errors.append(data.get("message", "Unknown NewsAPI error"))
+        else:
             for art in data.get("articles", []):
-                if (
-                    art["url"] not in seen_urls
-                    and art.get("title")
-                    and "[Removed]" not in art.get("title", "")
-                ):
-                    seen_urls.add(art["url"])
-                    art["matched_keyword"] = kw
+                if art.get("title") and "[Removed]" not in art.get("title", ""):
                     articles.append(art)
-        except Exception as e:
-            errors.append(f"{kw}: {str(e)}")
-            continue
+    except Exception as e:
+        errors.append(str(e))
 
     articles.sort(key=lambda x: x.get("publishedAt", ""), reverse=True)
     return articles, errors
@@ -191,14 +178,13 @@ if run:
     with st.spinner("Fetching news..."):
         articles, errors = fetch_news(KEYWORDS, hours_back=hours_back)
 
-    # Debug info
     if errors:
         with st.expander(f"API errors ({len(errors)})"):
             for e in errors:
                 st.text(e)
 
     if not articles:
-        st.warning(f"NewsAPI returned 0 articles across all {len(KEYWORDS)} keywords. Check API errors above.")
+        st.warning("NewsAPI returned 0 articles. Check API errors above or try a wider time window.")
         st.stop()
 
     st.caption(f"Raw fetch: {len(articles)} articles from NewsAPI.")
@@ -221,7 +207,7 @@ if run:
         st.caption(f"After M&A filter: {len(relevant)} items.")
 
     if not relevant:
-        st.info("No relevant business news found after filtering. Try expanding the time window.")
+        st.info("No relevant business news found. Try expanding the time window.")
         st.stop()
 
     status.markdown(f"**{len(relevant)} relevant items** — summarizing...")
@@ -237,7 +223,6 @@ if run:
         url = article.get("url", "#")
         source = article.get("source", {}).get("name", "Unknown")
         published = article.get("publishedAt", "")[:10]
-        keyword = article.get("matched_keyword", "")
         ma = is_ma(article)
 
         tag = '<span class="tag-ma">M&A</span>' if ma else '<span class="tag-general">Market</span>'
@@ -245,7 +230,7 @@ if run:
         st.markdown(f"""
         <div class="article-card">
             <div class="article-title"><a href="{url}" target="_blank">{title}</a></div>
-            <div class="article-meta">{tag} {source} &nbsp;·&nbsp; {published} &nbsp;·&nbsp; via: {keyword}</div>
+            <div class="article-meta">{tag} {source} &nbsp;·&nbsp; {published}</div>
             <div class="article-summary">{summary}</div>
         </div>
         """, unsafe_allow_html=True)
