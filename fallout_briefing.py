@@ -36,6 +36,7 @@ def fetch_news(keywords, hours_back=24):
     from_time = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
     seen_urls = set()
     articles = []
+    errors = []
 
     for kw in keywords:
         url = (
@@ -50,6 +51,9 @@ def fetch_news(keywords, hours_back=24):
         try:
             resp = requests.get(url, timeout=10)
             data = resp.json()
+            if data.get("status") != "ok":
+                errors.append(f"{kw}: {data.get('message', 'unknown error')}")
+                continue
             for art in data.get("articles", []):
                 if (
                     art["url"] not in seen_urls
@@ -59,11 +63,12 @@ def fetch_news(keywords, hours_back=24):
                     seen_urls.add(art["url"])
                     art["matched_keyword"] = kw
                     articles.append(art)
-        except Exception:
+        except Exception as e:
+            errors.append(f"{kw}: {str(e)}")
             continue
 
     articles.sort(key=lambda x: x.get("publishedAt", ""), reverse=True)
-    return articles
+    return articles, errors
 
 
 def is_relevant(article):
@@ -184,11 +189,19 @@ st.divider()
 
 if run:
     with st.spinner("Fetching news..."):
-        articles = fetch_news(KEYWORDS, hours_back=hours_back)
+        articles, errors = fetch_news(KEYWORDS, hours_back=hours_back)
+
+    # Debug info
+    if errors:
+        with st.expander(f"API errors ({len(errors)})"):
+            for e in errors:
+                st.text(e)
 
     if not articles:
-        st.info("No articles found. Try expanding the time window.")
+        st.warning(f"NewsAPI returned 0 articles across all {len(KEYWORDS)} keywords. Check API errors above.")
         st.stop()
+
+    st.caption(f"Raw fetch: {len(articles)} articles from NewsAPI.")
 
     status = st.empty()
     status.markdown(f"**{len(articles)} items fetched** — running relevance filter...")
@@ -200,13 +213,15 @@ if run:
         if is_relevant(article):
             relevant.append(article)
 
+    progress.empty()
+    st.caption(f"After relevance filter: {len(relevant)} items passed.")
+
     if filter_mode == "M&A only":
         relevant = [a for a in relevant if is_ma(a)]
-
-    progress.empty()
+        st.caption(f"After M&A filter: {len(relevant)} items.")
 
     if not relevant:
-        st.info("No relevant business news found. Try expanding the time window.")
+        st.info("No relevant business news found after filtering. Try expanding the time window.")
         st.stop()
 
     status.markdown(f"**{len(relevant)} relevant items** — summarizing...")
