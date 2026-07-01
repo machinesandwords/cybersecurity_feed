@@ -9,34 +9,33 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
 CYBERSECURITY_DOMAINS = (
-    "darkreading.com,bleepingcomputer.com,securityweek.com,theregister.com,"
-    "wired.com,zdnet.com,scmagazine.com,cybersecuritydive.com,threatpost.com,"
-    "krebsonsecurity.com,helpnetsecurity.com,infosecurity-magazine.com,"
-    "securityboulevard.com,csoonline.com,axios.com,reuters.com,wsj.com"
+    "darkreading.com,securityweek.com,csoonline.com,"
+    "cybersecuritydive.com,scmagazine.com,infosecurity-magazine.com,"
+    "axios.com,reuters.com,wsj.com,ft.com,bloomberg.com,"
+    "techcrunch.com,theregister.com,crunchbase.com"
 )
 
 KEYWORDS = [
     "cybersecurity acquisition",
     "cybersecurity merger",
-    "security vendor funding",
+    "cybersecurity funding",
     "cybersecurity IPO",
+    "cybersecurity investment",
+    "security vendor acquisition",
     "cybersecurity partnership",
     "CISO appointment",
+    "cybersecurity CEO",
     "security platform launch",
     "cybersecurity layoffs",
-    "security vendor bankruptcy",
-    "ransomware attack",
-    "data breach",
+    "cybersecurity bankruptcy",
     "cybersecurity regulation",
-    "security market share",
-    "threat intelligence",
-    "zero trust",
-    "cybersecurity CEO",
-    "SEC fines cybersecurity",
-    "SEC penalties cybersecurity",
+    "SEC cybersecurity",
+    "cybersecurity market",
+    "security vendor strategy",
+    "cybersecurity product strategy",
 ]
 
-MA_KEYWORDS = {"acquisition", "merger", "IPO", "funding", "bankruptcy", "buyout", "deal"}
+MA_KEYWORDS = {"acquisition", "merger", "IPO", "funding", "bankruptcy", "buyout", "deal", "investment"}
 
 # --- Helpers ---
 
@@ -72,13 +71,17 @@ def fetch_news(keywords, hours_back=24):
 
 
 def is_relevant(article):
-    """Claude relevance filter — drops anything not about enterprise cybersecurity market news."""
+    """Claude relevance filter — keeps only business and market intelligence items."""
     title = article.get("title", "")
     description = article.get("description") or ""
 
-    prompt = f"""You are a filter for a cybersecurity market intelligence newsletter for CISOs and enterprise security architects.
+    prompt = f"""You are a filter for a cybersecurity business intelligence newsletter for CISOs and enterprise security architects.
 
-Is this article relevant to enterprise cybersecurity market news? This includes: vendor acquisitions, mergers, funding, executive moves, product launches, regulatory actions, data breaches at enterprises, ransomware, SEC enforcement, or significant market shifts in the cybersecurity industry.
+Is this article relevant to cybersecurity BUSINESS and MARKET news? 
+
+YES if it covers: vendor acquisitions, mergers, funding rounds, IPOs, executive appointments or departures, product strategy, market consolidation, regulatory actions against vendors, SEC enforcement, company layoffs, bankruptcies, or significant partnership deals.
+
+NO if it is primarily about: specific cyberattacks, data breaches, malware, threat actors, vulnerabilities, incident response, or security operations — even if it mentions a cybersecurity company.
 
 Answer only YES or NO.
 
@@ -94,7 +97,7 @@ Description: {description}"""
         answer = response.content[0].text.strip().upper()
         return answer.startswith("YES")
     except Exception:
-        return True  # Default to keeping if filter fails
+        return True
 
 
 def is_ma(article):
@@ -107,9 +110,9 @@ def summarize(article):
     description = article.get("description") or ""
     source = article.get("source", {}).get("name", "")
 
-    prompt = f"""You are a briefing assistant for a cybersecurity market intelligence newsletter called The Fallout, written for CISOs and enterprise security architects.
+    prompt = f"""You are a briefing assistant for The Fallout, a cybersecurity business intelligence newsletter written for CISOs and enterprise security architects.
 
-Summarize this news item in 2-3 sentences. Focus on what it means for enterprise security practitioners, not investors. No em dashes. No vague language. Be specific and direct. Write in complete sentences.
+Summarize this news item in 2-3 sentences. Focus on what it means for enterprise security practitioners making vendor, budget, and platform decisions. No em dashes. No vague language. Be specific and direct. Write in complete sentences. Do not editorialize.
 
 Title: {title}
 Source: {source}
@@ -169,13 +172,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("The Fallout — Daily Briefing")
-st.caption("Cybersecurity market intelligence for security practitioners")
+st.caption("Cybersecurity business and market intelligence")
 
 col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
     filter_mode = st.radio(
         "Show",
-        ["All cybersecurity news", "M&A only"],
+        ["All business news", "M&A only"],
         horizontal=True
     )
 with col2:
@@ -186,14 +189,13 @@ with col3:
 st.divider()
 
 if run:
-    with st.spinner("Fetching news from cybersecurity sources..."):
+    with st.spinner("Fetching news from cybersecurity business sources..."):
         articles = fetch_news(KEYWORDS, hours_back=hours_back)
 
     if not articles:
         st.info("No articles found. Try expanding the time window.")
         st.stop()
 
-    # Relevance filter
     status = st.empty()
     status.markdown(f"**{len(articles)} items fetched** — running relevance filter...")
     progress = st.progress(0)
@@ -210,7 +212,7 @@ if run:
     progress.empty()
 
     if not relevant:
-        st.info("No relevant articles found after filtering. Try expanding the time window.")
+        st.info("No relevant business news found. Try expanding the time window.")
         st.stop()
 
     status.markdown(f"**{len(relevant)} relevant items** — summarizing...")
