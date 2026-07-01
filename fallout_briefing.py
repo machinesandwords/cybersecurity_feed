@@ -9,28 +9,47 @@ NEWS_API_KEY = st.secrets["NEWS_API_KEY"]
 ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
 
 # Single batched query — 1 API call per run instead of 17
-KEYWORDS = [
-    "cybersecurity acquisition",
-    "cybersecurity merger",
-    "cybersecurity funding",
-    "cybersecurity IPO",
-    "CISO appointment",
-    "cybersecurity CEO",
-    "cybersecurity layoffs",
-    "SEC cybersecurity",
+# Two term groups combined with AND so we get broad recall (no exact-phrase
+# matching), then let the Claude relevance filter downstream do precision.
+TOPIC_TERMS = [
+    "cybersecurity",
+    "cyber security",
+    "infosec",
     "security vendor",
+]
+
+EVENT_TERMS = [
+    "acquisition",
+    "acquires",
+    "acquired",
+    "merger",
+    "funding",
+    "raises",
+    "IPO",
+    "CISO",
+    "CEO",
+    "layoffs",
+    "SEC",
+    "bankruptcy",
+    "buyout",
 ]
 
 MA_KEYWORDS = {"acquisition", "merger", "IPO", "funding", "bankruptcy", "buyout", "deal", "investment"}
 
 # --- Helpers ---
 
-def fetch_news(keywords, hours_back=24):
+def build_query(topic_terms=TOPIC_TERMS, event_terms=EVENT_TERMS):
+    topic_group = " OR ".join(f'"{t}"' if " " in t else t for t in topic_terms)
+    event_group = " OR ".join(event_terms)
+    return f"({topic_group}) AND ({event_group})"
+
+
+def fetch_news(keywords=None, hours_back=24):
     from_time = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
     articles = []
     errors = []
 
-    query = " OR ".join(f'"{kw}"' for kw in keywords)
+    query = build_query()
 
     url = (
         f"https://newsapi.org/v2/everything"
@@ -176,7 +195,7 @@ st.divider()
 
 if run:
     with st.spinner("Fetching news..."):
-        articles, errors = fetch_news(KEYWORDS, hours_back=hours_back)
+        articles, errors = fetch_news(hours_back=hours_back)
 
     if errors:
         with st.expander(f"API errors ({len(errors)})"):
